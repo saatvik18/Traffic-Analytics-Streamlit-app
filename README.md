@@ -8,10 +8,10 @@ Built as a 6-day progressive build: each stage (detection → tracking → ROI/l
 
 - **Vehicle Detection** — YOLO11 detects cars, trucks, buses, and motorcycles frame-by-frame
 - **Multi-Object Tracking** — ByteTrack assigns persistent IDs so the same vehicle is tracked across frames
-- **ROI & Lane Counting** — a configurable region-of-interest polygon plus lane-divider lines split traffic into lanes and count vehicles entering/exiting
-- **Smart Traffic Analytics** — per-frame traffic density (LOW/MEDIUM/HIGH), a signal-timing recommendation, rough vehicle speed, and average waiting time, all logged to CSV
+- **ROI & Lane Counting** — a region-of-interest polygon plus lane-divider lines split traffic into lanes and count vehicles entering/exiting
+- **Smart Traffic Analytics** — per-frame traffic density (LOW/MEDIUM/HIGH) and a signal-timing recommendation, all logged to CSV
 - **Auto-Generated Graphs** — vehicle count over time, lane-wise breakdown, density distribution, signal recommendation frequency, and entry/exit trends
-- **Streamlit Dashboard** — upload a video, run the full pipeline, watch each stage's output video and chart appear live, and download everything as a zip
+- **Streamlit Dashboard** — upload a video, run the full pipeline, watch each stage's output video and chart appear live, and download the outputs
 
 ## Tech Stack
 
@@ -38,7 +38,7 @@ TrafficAnalytics/
     ├── detection.py          # Step 1 — YOLO vehicle detection
     ├── tracking.py            # Step 2 — ByteTrack tracking
     ├── roi.py                  # Step 3 — ROI polygon + lane counting + entry/exit
-    ├── analytics.py             # Step 4 — density, signal timing, speed, waiting time, CSV
+    ├── analytics.py             # Step 4 — density, signal timing, CSV logging
     └── graphs.py                 # Step 5 — matplotlib charts + summary
 ```
 
@@ -65,7 +65,7 @@ Step 5 — Graphs ───────► vehicle_count.png, lane_graph.png,
                           entry_exit.png, summary.csv
      │
      ▼
-Download everything
+Download outputs
 ```
 
 ## Setup
@@ -101,12 +101,11 @@ Opens at `http://localhost:8501`.
 1. Upload a traffic video (`.mp4`, `.mov`, `.avi`, `.mkv`)
 2. Click **Run Complete Pipeline**
 3. Watch each stage's output video/chart appear as it's produced
-4. Click **Download Everything** for a zip of all videos, the CSV log, and the charts
+4. Download the output videos, CSV log, and charts
 
 ## Notes
 
-- The ROI polygon and lane-divider positions are defined as *fractions* of frame width/height, so they roughly adapt to different video resolutions — for a specific camera angle, tuning exact pixel coordinates in `roi.py` gives better results.
-- "Speed" is currently pixels moved per frame, not real-world speed; calibrating it to km/h would need a known real-world reference distance (e.g. lane width).
+- The ROI polygon and lane-divider positions are currently hardcoded pixel coordinates tuned for 1920×1080 input. For a different resolution or camera angle, tune the coordinates in `roi.py` and `analytics.py`.
 - Each pipeline step currently reruns detection + tracking independently on the full video. A future optimization is to run detection/tracking once and reuse the results across steps 3 and 4.
 
 ## License
