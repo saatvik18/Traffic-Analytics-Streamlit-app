@@ -3,60 +3,68 @@ Day 2 logic: run YOLO + ByteTrack so every vehicle gets a persistent ID
 across frames, and write an annotated video.
 """
 
-import cv2
 import supervision as sv
 
-from modules.utils import make_browser_playable
+from modules.utils import (
+    open_video,
+    create_writer,
+    build_labels,
+    make_browser_playable,
+)
 
 
-def run_tracking(model, video_path, output_path, progress_callback=None):
+def run_tracking(model, video_path, output_path,
+                 stride=1, max_frames=None, progress_callback=None):
+    """
+    Same arguments as run_detection; adds ByteTrack IDs to each box.
+    """
+    stride = max(1, int(stride))
     raw_path = output_path.replace(".mp4", "_raw.mp4")
 
-    cap = cv2.VideoCapture(video_path)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+    cap, width, height, fps, total_frames = open_video(video_path)
+    if max_frames:
+        total_frames = min(total_frames, int(max_frames))
 
     tracker = sv.ByteTrack()
     box_annotator = sv.BoxAnnotator()
     label_annotator = sv.LabelAnnotator()
 
-    out = cv2.VideoWriter(
-        raw_path,
-        cv2.VideoWriter_fourcc(*'mp4v'),
-        fps,
-        (width, height)
-    )
+    out = create_writer(raw_path, fps / stride, width, height)
 
     frame_no = 0
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frame_no += 1
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                break
 
-        result = model(frame, verbose=False)[0]
-        detections = sv.Detections.from_ultralytics(result)
-        detections = tracker.update_with_detections(detections)
+            frame_no += 1
+            if max_frames and frame_no > max_frames:
+                break
+            if (frame_no - 1) % stride != 0:
+                continue
 
-        labels = []
-        if detections.tracker_id is not None:
-            for tracker_id, class_id in zip(detections.tracker_id, detections.class_id):
-                if tracker_id is None:
-                    labels.append(model.names[int(class_id)])
-                else:
-                    labels.append(f"{model.names[int(class_id)]} ID:{int(tracker_id)}")
+            result = model(frame, verbose=False)[0]
+            detections = sv.Detections.from_ultralytics(result)
+            detections = tracker.update_with_detections(detections)
 
-        annotated = frame.copy()
-        annotated = box_annotator.annotate(scene=annotated, detections=detections)
-        annotated = label_annotator.annotate(scene=annotated, detections=detections, labels=labels)
+            labels = build_labels(model, detections)
 
-        out.write(annotated)
+            annotated = frame.copy()
+            annotated = box_annotator.annotate(scene=annotated, detections=detections)
+            annotated = label_annotator.annotate(
+                scene=annotated, detections=detections, labels=labels
+            )
 
-        if progress_callback:
-            progress_callback(min(frame_no / total_frames, 1.0))
+            out.write(annotated)
 
-    cap.release()
-    out.release()
+            if progress_callback:
+                progress_callback(min(frame_no / total_frames, 1.0))
+    finally:
+        cap.release()
+        out.release()
+
+    if progress_callback:
+        progress_callback(1.0)
+
     return make_browser_playable(raw_path, output_path)

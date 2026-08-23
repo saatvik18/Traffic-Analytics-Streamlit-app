@@ -3,66 +3,67 @@ Day 1 logic: run YOLO detection on every frame of a video,
 draw boxes + a vehicle count overlay, and write an annotated video.
 """
 
-import cv2
+from modules.utils import (
+    open_video,
+    create_writer,
+    draw_overlay,
+    make_browser_playable,
+)
 
-from modules.utils import make_browser_playable
-
-VEHICLE_CLASSES = ['car', 'truck', 'bus', 'motorcycle']
+VEHICLE_CLASSES = ("car", "truck", "bus", "motorcycle")
 
 
-def run_detection(model, video_path, output_path, progress_callback=None):
+def run_detection(model, video_path, output_path,
+                  stride=1, max_frames=None, progress_callback=None):
     """
-    model: a loaded ultralytics YOLO model
-    video_path: path to input video
-    output_path: path to write annotated, browser-playable output video
+    model:             a loaded ultralytics YOLO model
+    video_path:        path to the input video
+    output_path:       where to write the annotated, browser-playable video
+    stride:            process every Nth frame (1 = every frame)
+    max_frames:        stop after this many source frames (None = whole video)
     progress_callback: optional function(fraction_done: float) -> None
     """
+    stride = max(1, int(stride))
     raw_path = output_path.replace(".mp4", "_raw.mp4")
 
-    cap = cv2.VideoCapture(video_path)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+    cap, width, height, fps, total_frames = open_video(video_path)
+    if max_frames:
+        total_frames = min(total_frames, int(max_frames))
 
-    out = cv2.VideoWriter(
-        raw_path,
-        cv2.VideoWriter_fourcc(*'mp4v'),
-        fps,
-        (width, height)
-    )
+    # Writing at fps/stride keeps the output the same duration as the source.
+    out = create_writer(raw_path, fps / stride, width, height)
 
     frame_no = 0
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                break
 
-        results = model(frame, verbose=False)
-        annotated = results[0].plot()
+            frame_no += 1
+            if max_frames and frame_no > max_frames:
+                break
+            if (frame_no - 1) % stride != 0:
+                continue
 
-        vehicle_count = 0
-        for box in results[0].boxes:
-            name = model.names[int(box.cls[0])]
-            if name in VEHICLE_CLASSES:
-                vehicle_count += 1
+            result = model(frame, verbose=False)[0]
+            annotated = result.plot()
 
-        cv2.putText(
-            annotated,
-            f"Vehicles: {vehicle_count}",
-            (20, 40),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2
-        )
+            vehicle_count = 0
+            for box in result.boxes:
+                if model.names[int(box.cls[0])] in VEHICLE_CLASSES:
+                    vehicle_count += 1
 
-        out.write(annotated)
-        frame_no += 1
+            draw_overlay(annotated, [(f"Vehicles : {vehicle_count}", (0, 255, 0))], scale=1.0)
+            out.write(annotated)
 
-        if progress_callback:
-            progress_callback(min(frame_no / total_frames, 1.0))
+            if progress_callback:
+                progress_callback(min(frame_no / total_frames, 1.0))
+    finally:
+        cap.release()
+        out.release()
 
-    cap.release()
-    out.release()
+    if progress_callback:
+        progress_callback(1.0)
+
     return make_browser_playable(raw_path, output_path)

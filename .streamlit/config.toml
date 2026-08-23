@@ -1,0 +1,8 @@
+[server]
+# Streamlit's default upload cap is 200 MB; traffic clips get large.
+maxUploadSize = 1024
+# Don't restart the app when OpenCV/ffmpeg write into run_output/.
+folderWatchBlacklist = ["run_output"]
+
+[browser]
+gatherUsageStats = false
